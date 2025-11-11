@@ -9,6 +9,9 @@ export function TodoList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addingTodo, setAddingTodo] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [editingSaving, setEditingSaving] = useState(false);
 
   useEffect(() => {
     fetchTodos();
@@ -99,6 +102,46 @@ export function TodoList() {
     }
   };
 
+  const startEdit = (id: string, title: string) => {
+    setEditingId(id);
+    setEditingTitle(title);
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingTitle('');
+    setError(null);
+  };
+
+  const saveEdit = async (id: string) => {
+    const sanitized = sanitizeTodoTitle(editingTitle);
+    const validation = validateTodoTitle(sanitized);
+
+    if (!validation.isValid) {
+      setError(validation.error || 'Invalid input');
+      return;
+    }
+
+    try {
+      setEditingSaving(true);
+      setError(null);
+      const { error } = await supabase
+        .from('todos')
+        .update({ title: sanitized })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setTodos(todos.map(todo => (todo.id === id ? { ...todo, title: sanitized } : todo)));
+      cancelEdit();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update todo');
+    } finally {
+      setEditingSaving(false);
+    }
+  };
+
   const stats = {
     total: todos.length,
     completed: todos.filter(t => t.completed).length,
@@ -184,22 +227,65 @@ export function TodoList() {
                       {todo.completed && <Check className="w-4 h-4 text-white" />}
                     </button>
 
-                    <span
-                      className={`flex-1 transition-all ${
-                        todo.completed
-                          ? 'text-slate-400 line-through'
-                          : 'text-slate-700'
-                      }`}
-                    >
-                      {todo.title}
-                    </span>
+                    {editingId === todo.id ? (
+                      <>
+                        <input
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-500"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          disabled={editingSaving}
+                        />
 
-                    <button
-                      onClick={() => deleteTodo(todo.id)}
-                      className="flex-shrink-0 p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => saveEdit(todo.id)}
+                            disabled={editingSaving}
+                            className="p-2 bg-slate-700 text-white rounded-md hover:bg-slate-800 focus:outline-none transition-all flex items-center"
+                          >
+                            {editingSaving ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Check className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          onDoubleClick={() => startEdit(todo.id, todo.title)}
+                          className={`flex-1 transition-all ${
+                            todo.completed
+                              ? 'text-slate-400 line-through'
+                              : 'text-slate-700'
+                          }`}
+                        >
+                          {todo.title}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => startEdit(todo.id, todo.title)}
+                            className="px-2 py-1 text-sm text-slate-500 hover:text-slate-700 rounded-md opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            onClick={() => deleteTodo(todo.id)}
+                            className="flex-shrink-0 p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))
               )}
